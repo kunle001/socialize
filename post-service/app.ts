@@ -25,6 +25,7 @@ async function connect() {
   await channel.assertQueue('post_created');
   await channel.assertQueue('post_updated');
   await channel.assertQueue('post_deleted');
+  await channel.assertQueue('userCreated');
 };
 
 // conuming messages from necessary channels
@@ -32,49 +33,84 @@ connect().then(() => {
   channel.consume('user_created', async (data: Message | null) => {
     if (data) {
       const { id, email } = JSON.parse(data.content.toString());
-      await prisma.user.create({
+
+      const user = await prisma.user.create({
         data: {
           id,
           email,
         }
       });
+      channel.sendToQueue('userCreated', Buffer.from(JSON.stringify(user)))
       channel.ack(data)
-      console.log('from poem service: user created!')
+      console.log('from post service: user created!')
     }
   });
 
-  // channel.consume('comment_created', (data: Message | null) => {
-  //   if (data) {
-  //     const { id, userId, postId, content } = JSON.parse(data.content.toString());
+  channel.consume('comment_created', async (data: Message | null) => {
+    if (data) {
+      const { id, userId, postId, content } = JSON.parse(data.content.toString());
 
-  //     prisma.comment.create({
-  //       data: {
-  //         id,
-  //         userId,
-  //         content,
-  //         postId
-  //       }
-  //     })
-  //     channel.ack(data)
-  //     console.log('from poem service: comment created!')
-  //   }
-  // });
+      await prisma.comment.create({
+        data: {
+          id,
+          userId,
+          content,
+          postId
+        }
+      })
+      channel.ack(data)
+      console.log('from poem service: comment created!')
+    }
+  });
 
-  // channel.consume('like_created', (data: Message | null) => {
-  //   if (data) {
-  //     const { id, userId, postId } = JSON.parse(data.content.toString());
+  channel.consume('comment_updated', async (data: Message | null) => {
+    if (data) {
+      const res_data = JSON.parse(data.content.toString());
 
-  //     prisma.like.create({
-  //       data: {
-  //         id,
-  //         userId,
-  //         postId
-  //       }
-  //     })
-  //     channel.ack(data)
-  //     console.log('from poem service: like created!')
-  //   }
-  // });
+      await prisma.comment.update({
+        where: {
+          id: res_data.id
+        },
+        data: {
+          content: res_data.content,
+          // editedAt: res_data.editedAt
+        }
+      })
+      channel.ack(data)
+      console.log('from poem service: comment updated!')
+    }
+  });
+
+  channel.consume('like_created', async (data: Message | null) => {
+    if (data) {
+      const { id, userId, postId } = JSON.parse(data.content.toString());
+
+      await prisma.like.create({
+        data: {
+          id,
+          userId,
+          postId
+        }
+      })
+      channel.ack(data)
+      console.log('from poem service: like created!')
+    }
+  });
+
+  channel.consume('unliked', async (data: Message | null) => {
+    if (data) {
+      let res_data = JSON.parse(data.content.toString());
+      // res_data = res_data[0]
+      await prisma.like.deleteMany({
+        where: {
+          userId: res_data.userId,
+          postId: res_data.postId
+        }
+      })
+      channel.ack(data)
+      console.log('from poem service: unliked!')
+    }
+  });
 
 
 })
