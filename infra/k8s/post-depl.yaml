@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: post-depl
+  labels:
+    app: post
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: post
+  template:
+    metadata:
+      labels:
+        app: post
+    spec:
+      containers:
+        - name: post
+          image: kkunle/posts
+          livenessProbe: #sends a get request to the pods every 10 seconds
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            #restarts the pod if liveness, probe fails three times, 
+            # but if it is a rediness probe that fails it renders the pod unready. 
+            failureThreshold: 3  # Specify the failureThreshold here
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: post-srv
+spec:
+  type: LoadBalancer
+  selector:
+    app: post
+  ports:
+    - name: post
+      protocol: TCP
+      port: 3000
+      targetPort: 3000
